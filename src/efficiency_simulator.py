@@ -1,51 +1,54 @@
-
 """Efficiency Simulator
-Compute E_true = O / (T_visible * S) for single or batch inputs.
-Usage:
-    python efficiency_simulator.py --output 12 --time 3.0 --entropy 0.5
-    python efficiency_simulator.py --csv data/sample_operator_cycles.csv
-"""
-import argparse
-import sys
-import pandas as pd
-import numpy as np
 
-def efficiency(o, t_visible, s):
-    o = np.asarray(o, dtype=float)
-    t_visible = np.asarray(t_visible, dtype=float)
-    s = np.asarray(s, dtype=float)
-    if np.any(t_visible <= 0) or np.any(s <= 0):
-        raise ValueError("T_visible and S must be > 0 to avoid division by zero.")
+Generates a simple grid of (O, T_visible, S) values and computes E_index.
+
+Use this for:
+    - quick intuition building
+    - toy experiments on how entropy (S) affects efficiency
+
+Example:
+    python efficiency_simulator.py --output 10 --tmin 1 --tmax 10 --smin 1 --smax 5 --steps 20
+"""
+
+import argparse
+import numpy as np
+import csv
+from pathlib import Path
+
+
+def efficiency_index(o: float, t_visible: float, s: float) -> float:
+    if t_visible <= 0 or s <= 0:
+        return 0.0
     return o / (t_visible * s)
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--output', type=float, help='Output yield (O)')
-    ap.add_argument('--time', type=float, help='Visible time (T_visible)')
-    ap.add_argument('--entropy', type=float, help='Entropy / scatter (S)')
-    ap.add_argument('--csv', type=str, help='CSV with columns: cycle_id,phase,entropy,output,time(optional)')
-    ap.add_argument('--time-default', type=float, default=1.0, help='Default T_visible if missing in CSV')
-    args = ap.parse_args()
 
-    if args.csv:
-        df = pd.read_csv(args.csv)
-        if 'time' not in df.columns:
-            df['time'] = args.time_default
-        # Validate columns
-        for col in ['output','time','entropy']:
-            if col not in df.columns:
-                print(f"CSV is missing required column: {col}", file=sys.stderr)
-                sys.exit(1)
-        df['E_true'] = efficiency(df['output'], df['time'], df['entropy'])
-        print(df.to_string(index=False))
-        return
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Simulate E_index over a grid of T_visible and S.")
+    parser.add_argument("--output", type=float, default=10.0, help="Fixed output O for the simulation")
+    parser.add_argument("--tmin", type=float, default=1.0, help="Minimum visible time")
+    parser.add_argument("--tmax", type=float, default=10.0, help="Maximum visible time")
+    parser.add_argument("--smin", type=float, default=1.0, help="Minimum entropy index")
+    parser.add_argument("--smax", type=float, default=5.0, help="Maximum entropy index")
+    parser.add_argument("--steps", type=int, default=25, help="Number of steps per axis")
+    parser.add_argument("--out", type=str, default="data/simulated_grid.csv", help="Output CSV path")
+    args = parser.parse_args()
 
-    if args.output is None or args.time is None or args.entropy is None:
-        ap.print_help()
-        sys.exit(0)
+    t_vals = np.linspace(args.tmin, args.tmax, args.steps)
+    s_vals = np.linspace(args.smin, args.smax, args.steps)
 
-    e = efficiency(args.output, args.time, args.entropy)
-    print(f"E_true = {e:.6f}")
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-if __name__ == '__main__':
+    with out_path.open("w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["O", "T_visible", "S", "E_index"])
+        for t in t_vals:
+            for s in s_vals:
+                e_idx = efficiency_index(args.output, t, s)
+                writer.writerow([args.output, t, s, e_idx])
+
+    print(f"Saved simulated grid to {out_path.resolve()}")
+
+
+if __name__ == "__main__":
     main()
